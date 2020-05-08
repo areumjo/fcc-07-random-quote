@@ -115,7 +115,8 @@ npm install react-redux redux
     </Provider>
     ```
     - `connect()` : higher order component
-    - `mapStateToProps` 
+    - `mapStateToProps` : takes state and return an obejct for the component to use
+    - `mapDispatchToProps`
 
 ```
 Store sets the state ->
@@ -124,3 +125,151 @@ An action creator is called and dispatches an action ->
 Actions tell us about the changes from the event ->
 Reducers handle those actions and replace the store accordingly.
 ```
+
+- When you have several `reducers` ==> make new dir `reducers`
+    - for `authReducer`
+    ```js
+    const initialState = {}
+    const authReducer = (state = initialState, action) => {
+        // where you manipulate `state
+        return state
+    }
+    // combineReducers in rootReducer.js
+    import { combineReducer } from 'redux';
+    const rootReducer = combineReducers({
+        auth: authReducer,
+        project: projectReducer
+    });
+    export default rootReducer
+    ```
+
+- HOC `connect()` : pass mapStateToProps as a first argument (mapDispatchToProps is second argument)
+    ```js
+    const DashBoard = props => {
+        console.log(props) // initial state from projectReducer
+        return (
+            <ProjectList projects={props.projects} />
+        )
+    }
+    const mapStateToProps = state => {
+        return {
+            projects: state.project.pojects
+        }
+    }
+    export default connect(mapStateToProps)(Dashboard)
+    ```
+
+- `asyn Redux` : able to receive/update/delete data from database
+    - use `middleware` Thunk between DISPATCH and REDUCER : `action creator` 
+    - Thunk: halts the dispatch // perform asyn request // resume dispatch
+    - install
+    ```
+    npm install redux-thunk
+    ```
+    - use thunk inside of store
+    ```js
+    // index.js
+    import { createStore, applyMiddleware } from 'redux';
+    import thunk from 'redux-thunk';
+    const store = createStore(rootReducer, applyMiddleware(thunk));
+    ```
+    - mkdir `actions` ==> `projectActions.js
+        - due to Thunk, now we can return a function insideof action creator // normally (without Thunk), it would return an object with `TYPE`, `PAYLOAD` stuffs
+    ```js
+    export const createProject = project => {
+        return (dispatch, getState) => {
+            // make aysnc call to database - will use `firebase`
+            dispatch({ type: 'CREATE_PROJECT', project });
+        }
+    }
+    // in child component where you want to use data fro 'action creator'
+    const mapDispatchToProps = dispatch => {
+        return {
+            createProject: project => dispatch(createProject(project))
+        }
+    }
+    // projectReducer
+    const projectReducer = (state = initialState, action) => {
+        switch (action.type) {
+            case 'CREATE_PROJECT':
+                console.log('created project', action.project)
+        }
+        return state
+    }
+    ```
+
+- Firebase
+    - Install
+    ```
+    npm install firebase
+    ```
+    - Add firebase to your web app : mkdir `./src/config/fbConfig.js`
+    ```js
+    import firebase from 'firebase/app';
+    import 'firebase/firesotre'; // database
+    import 'firebase/auth'; // auth
+    // initialize firebase : will be available firebase website once you create a project there
+    var config = {
+        apikey: '',
+        authDoamin: '',
+        databaseURL: '',
+        projectID: '',
+        storageBucket: '',
+        messagingSenderId: ''
+    }
+    firebase.initializaApp(config);
+    export default firebase;
+    ```
+    - Develop - Database - start a collection - document
+        - create field with all data you want like (field, type, value)
+        - 1 Doc : 1 datapoint
+    - Connect firestore data to Redux
+        - start from actionCreator
+        ```
+        npm install react-redux-firebase redux-firestore
+        ```
+        ```js
+        // index.js
+        import { reduxFirestore, getFirestore, createFirestoreInstance } from "redux-firestore";
+        import { ReactReduxFirebaseProvider, getFirebase } from "react-redux-firebase";
+        import fbConfig from "./config/fbConfig";
+        import firebase from "firebase/app";
+
+        const store = createStore(rootReducer,
+            compose(
+                applyMiddleware(thunk.withExtraArgument({ getFirestore, getFirebase })),
+                reduxFirestore(fbConfig)
+            )
+        ); // compose from 'redux' will combine many stores like combinedRedux
+        const rrfProps = {
+            firebase,
+            config: fbConfig,
+            dispatch: store.dispatch,
+            createFirestoreInstance
+        };
+        ReactDOM.render(
+            <Provider store={store}>
+                <ReactReduxFirebaseProvider {...rrfProps}>
+                    <App />
+                </ReactReduxFirebaseProvider>
+            </Provider>,
+            document.getElementById("root")
+        );
+
+        // actionCreator
+        export const createProject = project => {
+            return (dispatch, getState, { getFirestore, getFirebase }) => {
+                // make aysnc call to database - will use `firebase`
+                const firestore = getFirestore();
+                firestore.collection('projects').add({ 
+                    ...project, // can add more fields likd author info
+                }).then(() => { // adding collection will take time so use `then()`
+                    dispatch({ type: 'CREATE_PROJECT', project });
+                }).catch(err => {
+                    dispatch({ type: 'CREATE_PROJECT_ERROR', err }); // add this type to Reducer under `switch`
+                })
+            }
+        }
+        ```
+    - Retrieving data from firebase db collection
+        - add firestoreReducer
